@@ -1,0 +1,1416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>neoradio</title>
+<style>
+/* ---------------------------------------------------------------
+   neoradio v1.0.2
+   Single file. No external files. No build step.
+   Palette: warm charcoal dash, brushed alloy, amber dot matrix.
+   --------------------------------------------------------------- */
+
+:root{
+  --dash:#2a2724;
+  --dash-dark:#1b1917;
+  --alloy:#9a958c;
+  --alloy-hi:#cfc8bb;
+  --alloy-lo:#6d6862;
+  --bezel:#191715;
+  --silk:#ded6c6;
+
+  /* One width drives the power switch. The volume slider takes 110 % of it,
+     because a plain bar looks shorter than a switch of the same width. */
+  --ctl-w:78px;
+  --silk-dim:#8c857a;
+  --lcd-glass:#180d03;
+  --lcd-off:#4a2a0b;
+  --lcd-on:#ffa231;
+  --needle:#d9342b;
+  --ok:#7fd67a;
+  --bad:#e2635a;
+  --wait:#e8b64a;
+  --label:"Arial Narrow","Helvetica Neue",Helvetica,Arial,sans-serif;
+}
+
+*{box-sizing:border-box}
+
+html{height:100%}
+body{min-height:100%}
+
+body{
+  margin:0;
+  padding:calc(24px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right))
+          calc(48px + env(safe-area-inset-bottom)) calc(14px + env(safe-area-inset-left));
+  color:var(--silk);
+  font-family:var(--label);
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:18px;
+  -webkit-font-smoothing:antialiased;
+  position:relative;
+}
+
+/* The background sits on its own fixed layer, not on body. A phone's
+   address bar hides and shows as the page scrolls, which changes the
+   viewport height and resizes body. A gradient painted on body restretches
+   with it and flickers. This layer is pinned to the screen, so it never
+   moves for that reason.
+
+   TEST: to find out if the gradient causes a flicker, replace the two
+   background lines below with a flat colour: background:#201d1b; */
+body::before{
+  content:"";
+  position:fixed;
+  inset:0;
+  z-index:-2;
+  background:
+    radial-gradient(120% 90% at 50% 0%, #3a3631 0%, #201d1b 55%, #131110 100%);
+}
+
+/* GRAIN.
+   The gradient puts three very close dark colours across the whole page.
+   An 8 bit screen cannot show the steps between them, so it makes flat
+   bands up to 68 pixels tall. A display dithers those bands, and its
+   backlight zones follow them, which reads as a flicker. Neither effect
+   is in the page itself, so a screen recording does not show them.
+
+   This layer puts a fixed grain over the gradient. The grain breaks each
+   band into noise, which removes what the display reacts to. The pattern
+   does not move and does not animate. Raise the opacity for more effect,
+   or set it to 0 to remove the grain. */
+body::after{
+  content:"";
+  position:fixed;
+  inset:0;
+  z-index:-1;
+  pointer-events:none;
+  opacity:.045;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* ------------------------------ head unit ------------------------------ */
+
+.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
+    clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+.unit{
+  flex:0 0 auto;
+  width:100%;
+  max-width:940px;
+  position:relative;
+  border-radius:14px;
+  padding:10px;
+  background:linear-gradient(180deg,#3b3733 0%,#1d1a18 100%);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.14) inset,
+    0 -2px 0 rgba(0,0,0,.6) inset,
+    0 26px 50px rgba(0,0,0,.55);
+}
+
+.face{
+  position:relative;
+  border-radius:9px;
+  padding:22px 20px;
+  background:
+    repeating-linear-gradient(92deg,
+      rgba(255,255,255,.045) 0px,
+      rgba(255,255,255,.045) 1px,
+      rgba(0,0,0,.05) 2px,
+      rgba(0,0,0,.05) 3px),
+    linear-gradient(176deg,#514c46 0%,#2b2825 46%,#201d1b 100%);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.16) inset,
+    0 -14px 26px rgba(0,0,0,.45) inset;
+  display:grid;
+  grid-template-columns:auto 1fr auto;
+  align-items:center;
+  gap:20px;
+}
+
+@media (max-width:700px){
+  .face{grid-template-columns:1fr 1fr;grid-template-areas:"disp disp" "kl kr";gap:16px}
+  .knob-well.left{grid-area:kl;justify-self:start}
+  .knob-well.right{grid-area:kr;justify-self:end}
+  .stack{grid-area:disp}
+}
+
+.screw{
+  position:absolute;width:11px;height:11px;border-radius:50%;
+  background:radial-gradient(circle at 34% 30%, #b9b2a6, #5d574f 62%, #2a2622);
+  box-shadow:0 1px 1px rgba(0,0,0,.7);
+}
+.screw::after{
+  content:"";position:absolute;inset:3px;border-top:1.5px solid rgba(0,0,0,.65);
+  transform:rotate(28deg);
+}
+.screw.tl{top:7px;left:7px}
+.screw.tr{top:7px;right:7px}
+.screw.bl{bottom:7px;left:7px}
+.screw.br{bottom:7px;right:7px}
+
+/* -------------------------------- footer -------------------------------- */
+
+.foot{
+  flex:0 0 auto;
+  max-width:560px;
+  margin:0;
+  text-align:center;
+  font-size:12px;
+  line-height:1.65;
+  color:var(--silk-dim);
+}
+.foot p{margin:0 0 5px}
+.foot p:last-child{margin:0}
+.foot a{color:var(--silk-dim);text-decoration:underline}
+.foot a:hover,.foot a:focus{color:var(--silk)}
+
+/* ------------------------------ knobs ------------------------------ */
+
+.knob-well{display:flex;flex-direction:column;align-items:center;gap:9px}
+
+.knob{
+  width:134px;height:134px;border-radius:50%;
+  touch-action:none;cursor:grab;display:block;
+  background:transparent;border:0;padding:0;
+  filter:drop-shadow(0 8px 12px rgba(0,0,0,.55));
+}
+.knob:active{cursor:grabbing}
+.knob:focus-visible{outline:2px solid var(--lcd-on);outline-offset:5px;border-radius:50%}
+
+@media (max-width:700px){.knob{width:110px;height:110px}}
+
+.knob-label{
+  font-size:10px;letter-spacing:.22em;color:var(--silk-dim);
+  text-transform:uppercase;
+}
+
+/* ------------------------------ display stack ------------------------------ */
+
+.stack{display:flex;flex-direction:column;gap:12px;min-width:0}
+
+.well{
+  border-radius:6px;padding:10px;
+  background:linear-gradient(180deg,#0d0c0b,#131110);
+  box-shadow:
+    0 3px 8px rgba(0,0,0,.75) inset,
+    0 1px 0 rgba(255,255,255,.07);
+}
+
+.scale-wrap{padding:8px 10px 4px}
+canvas{display:block;width:100%;height:auto}
+
+.lcd-wrap{
+  position:relative;
+  background:var(--lcd-glass);
+  border-radius:4px;
+  padding:12px 14px;
+  box-shadow:
+    0 0 0 1px #000 inset,
+    0 4px 14px rgba(0,0,0,.8) inset,
+    0 0 26px rgba(255,150,40,.10);
+  overflow:hidden;
+}
+.lcd-wrap::after{ /* glass sheen */
+  content:"";position:absolute;left:0;right:0;top:0;height:46%;
+  background:linear-gradient(180deg,rgba(255,255,255,.055),transparent);
+  pointer-events:none;
+}
+
+.strip{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}
+
+/* rocker power switch */
+.rocker{
+  width:var(--ctl-w);height:30px;border-radius:4px;border:0;padding:0;
+  background:linear-gradient(180deg,#26221f,#161412);
+  box-shadow:0 2px 4px rgba(0,0,0,.6),0 1px 0 rgba(255,255,255,.09) inset;
+  position:relative;cursor:pointer;
+}
+.rocker::before{
+  content:"";position:absolute;inset:3px;border-radius:3px;
+  background:linear-gradient(180deg,#4b453f,#2a2622);
+  transition:background .12s ease;
+}
+.rocker::after{
+  content:"";position:absolute;right:8px;top:50%;transform:translateY(-50%);
+  width:8px;height:8px;border-radius:50%;
+  background:#3d1512;box-shadow:0 0 0 1px rgba(0,0,0,.6) inset;
+  transition:background .12s ease, box-shadow .12s ease;
+}
+.rocker[aria-pressed="true"]::before{background:linear-gradient(180deg,#2a2622,#4b453f)}
+.rocker[aria-pressed="true"]::after{
+  background:#ff5a4a;box-shadow:0 0 9px #ff5a4a,0 0 0 1px rgba(0,0,0,.5) inset;
+}
+.rocker:focus-visible{outline:2px solid var(--lcd-on);outline-offset:3px}
+
+/* volume thumbwheel */
+.wheel{
+  width:calc(var(--ctl-w) * 1.1);height:30px;border-radius:4px;-webkit-appearance:none;appearance:none;
+  background:
+    repeating-linear-gradient(90deg,#5c564e 0 2px,#332f2b 2px 4px);
+  box-shadow:0 2px 5px rgba(0,0,0,.6) inset,0 1px 0 rgba(255,255,255,.08);
+  cursor:ew-resize;
+}
+.wheel::-webkit-slider-thumb{
+  -webkit-appearance:none;width:9px;height:30px;border-radius:2px;
+  background:linear-gradient(180deg,#e2dacb,#8e887e);
+  box-shadow:0 0 4px rgba(0,0,0,.7);
+}
+.wheel::-moz-range-thumb{
+  width:9px;height:30px;border:0;border-radius:2px;
+  background:linear-gradient(180deg,#e2dacb,#8e887e);
+}
+.wheel:focus-visible{outline:2px solid var(--lcd-on);outline-offset:3px}
+
+.ctl-label{font-size:9px;letter-spacing:.2em;color:var(--silk-dim);text-align:center}
+.ctl{display:flex;flex-direction:column;align-items:center;gap:5px}
+
+</style>
+</head>
+<body>
+
+<div class="unit">
+  <div class="face">
+    <i class="screw tl"></i><i class="screw tr"></i>
+    <i class="screw bl"></i><i class="screw br"></i>
+
+    <div class="knob-well left">
+      <svg class="knob" id="knobSource" viewBox="0 0 120 120"
+           role="slider" tabindex="0" aria-label="Source"
+           aria-valuemin="1" aria-valuemax="11" aria-valuenow="1"></svg>
+      <span class="knob-label">Source</span>
+    </div>
+
+    <div class="stack">
+      <div class="well scale-wrap">
+        <canvas id="scale" width="1200" height="150"></canvas>
+      </div>
+
+      <div class="lcd-wrap">
+        <canvas id="lcd" width="1200" height="240"></canvas>
+      </div>
+
+      <div class="strip">
+        <div class="ctl">
+          <input class="wheel" id="vol" type="range" min="0" max="100" value="62" aria-label="Volume">
+          <span class="ctl-label">Volume</span>
+        </div>
+        <div class="ctl">
+          <button class="rocker" id="power" aria-pressed="false" aria-label="Power"></button>
+          <span class="ctl-label">Power</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="knob-well right">
+      <svg class="knob" id="knobChannel" viewBox="0 0 120 120"
+           role="slider" tabindex="0" aria-label="Channel"
+           aria-valuemin="1" aria-valuemax="1" aria-valuenow="1"></svg>
+      <span class="knob-label">Channel</span>
+    </div>
+  </div>
+</div>
+
+<p class="sr" id="live" aria-live="polite"></p>
+
+<footer class="foot">
+  <p id="credit"></p>
+  <p>Station data from
+    <a href="https://somafm.com/" target="_blank" rel="noopener">SomaFM</a>,
+    <a href="https://www.radio-browser.info/" target="_blank" rel="noopener">Radio Browser</a>,
+    the <a href="https://archive.org/" target="_blank" rel="noopener">Internet Archive</a>
+    and <a href="https://openmhz.com/" target="_blank" rel="noopener">OpenMHz</a>.
+    This tuner plays each stream direct from its source. It does not record,
+    re-encode or re-transmit the audio.</p>
+</footer>
+
+<script>
+"use strict";
+
+/* =======================================================================
+   1. DOT MATRIX FONT — 5 columns x 7 rows, ASCII 0x20 to 0x5F.
+      Each character is 5 bytes. Bit 0 is the top row.
+   ======================================================================= */
+
+const FONT =
+"0000000000"+"00005F0000"+"0007000700"+"147F147F14"+"242A7F2A12"+"2313086462"+
+"3649552250"+"0005030000"+"001C224100"+"0041221C00"+"14083E0814"+"08083E0808"+
+"0050300000"+"0808080808"+"0060600000"+"2010080402"+"3E5149453E"+"00427F4000"+
+"4261514946"+"2141454B31"+"1814127F10"+"2745454539"+"3C4A494930"+"0171090503"+
+"3649494936"+"064949291E"+"0036360000"+"0056360000"+"0814224100"+"1414141414"+
+"0041221408"+"0201510906"+"324979413E"+"7E1111117E"+"7F49494936"+"3E41414122"+
+"7F4141221C"+"7F49494941"+"7F09090901"+"3E4149497A"+"7F0808087F"+"00417F4100"+
+"2040413F01"+"7F08142241"+"7F40404040"+"7F020C027F"+"7F0408107F"+"3E4141413E"+
+"7F09090906"+"3E4151215E"+"7F09192946"+"4649494931"+"01017F0101"+"3F4040403F"+
+"1F2040201F"+"3F4038403F"+"6314081463"+"0708700807"+"6151494543"+"007F414100"+
+"0204081020"+"0041417F00"+"0402010204"+"4040404040";
+
+/* The columns are read once into a table. The display asks for a glyph
+   about 200 times each frame, which is too often to parse the string. */
+const GLYPHS = [];
+for (let c = 0x20; c <= 0x5F; c++){
+  const at = (c - 0x20) * 10, cols = [];
+  for (let i = 0; i < 5; i++) cols.push(parseInt(FONT.substr(at + i*2, 2), 16));
+  GLYPHS[c] = cols;
+}
+
+function glyph(ch){
+  let c = ch.toUpperCase().charCodeAt(0);
+  if (c < 0x20 || c > 0x5F) c = 0x3F;          /* unknown shows a question mark */
+  return GLYPHS[c];
+}
+
+/* =======================================================================
+   2. SOURCES — each dial position is a recipe, not a fixed list.
+      An adapter turns each recipe into channels when you tune to it.
+   ======================================================================= */
+
+const S = (label, url, sub) => ({label, url, sub});
+
+/* Country guess from the browser locale. No permission prompt. */
+const COUNTRY = (() => {
+  const all = [navigator.language].concat(navigator.languages || []);
+  for (const l of all){ const m = /-([A-Za-z]{2})$/.exec(l || ""); if (m) return m[1].toUpperCase(); }
+  return "US";
+})();
+
+const SOURCES = [
+  {name:"LOCAL FM", kind:"rb", q:() => [
+      {countrycode:COUNTRY, order:"clickcount", reverse:"true", limit:150}]},
+
+  {name:"WORLD", kind:"rb", q:() => [
+      {order:"clickcount", reverse:"true", limit:150}]},
+
+  {name:"SHORTWAVE", kind:"rb", q:() => [
+      {tag:"shortwave", order:"clickcount", reverse:"true", limit:80},
+      {tag:"world radio", order:"clickcount", reverse:"true", limit:60}]},
+
+  {name:"PUBLIC SAFETY", kind:"openmhz"},
+
+  {name:"WEATHER", kind:"rb", q:() => [
+      {tag:"weather", order:"clickcount", reverse:"true", limit:70},
+      {tag:"noaa", order:"clickcount", reverse:"true", limit:50}]},
+
+  {name:"HAM UTILITY", kind:"rb", q:() => [
+      {tag:"amateur radio", order:"clickcount", reverse:"true", limit:60},
+      {tag:"ham radio", order:"clickcount", reverse:"true", limit:60}]},
+
+  {name:"AIRBAND", kind:"rb", q:() => [
+      {tag:"aviation", order:"clickcount", reverse:"true", limit:60},
+      {tag:"air traffic", order:"clickcount", reverse:"true", limit:50}]},
+
+  {name:"SOMA FM", kind:"soma", seed:[
+      S("GROOVE SALAD",   "https://ice1.somafm.com/groovesalad-128-mp3",   "AMBIENT DOWNTEMPO"),
+      S("DRONE ZONE",     "https://ice1.somafm.com/dronezone-128-mp3",     "ATMOSPHERIC"),
+      S("DEEP SPACE ONE", "https://ice1.somafm.com/deepspaceone-128-mp3",  "DEEP AMBIENT"),
+      S("MISSION CONTROL","https://ice1.somafm.com/missioncontrol-128-mp3","NASA CHATTER"),
+      S("DEF CON RADIO",  "https://ice1.somafm.com/defcon-128-mp3",        "HACKER CONFERENCE"),
+      S("SECRET AGENT",   "https://ice1.somafm.com/secretagent-128-mp3",   "SPY JAZZ"),
+      S("UNDERGROUND 80S","https://ice1.somafm.com/u80s-128-mp3",          "EARLY ALTERNATIVE"),
+      S("BOOT LIQUOR",    "https://ice1.somafm.com/bootliquor-128-mp3",    "AMERICANA")
+    ]},
+
+  {name:"OLD TIME RADIO", kind:"archive", q:"collection:(oldtimeradio)"},
+  {name:"NUMBERS", kind:"archive", q:'("numbers station" OR "conet project" OR "shortwave numbers") AND mediatype:(audio)'},
+
+  {name:"SPACE", kind:"rb", q:() => [
+      {tag:"nasa", order:"clickcount", reverse:"true", limit:40},
+      {tag:"space", order:"clickcount", reverse:"true", limit:60}]}
+];
+
+SOURCES.forEach(s => {
+  s.channels = []; s.loaded = false; s.loading = false; s.error = null; s.failedAt = 0;
+});
+
+/* The footer credit follows the dial. Each source has a kind, and the kind is
+   the provider. A new source gets its credit with no change to this table. */
+const PROVIDERS = {
+  rb:      {name:"Radio Browser",    url:"https://www.radio-browser.info/"},
+  soma:    {name:"SomaFM",           url:"https://somafm.com/"},
+  archive: {name:"the Internet Archive", url:"https://archive.org/"},
+  openmhz: {name:"OpenMHz",          url:"https://openmhz.com/"},
+};
+
+/* =======================================================================
+   3. STATE
+   ======================================================================= */
+
+const state = {
+  power:false,
+  src:7,                 /* start on SOMA FM, because it needs no network */
+  ch:0,
+  status:"OFF",          /* OFF, LOADING, TUNING, ON AIR, SKIPPING, NO SIGNAL, EMPTY */
+  volume:0.62,
+  needle:0,              /* 0 to 1, animated */
+  needleTarget:0,
+  dir:1,                 /* last knob direction, used by the skip logic */
+  track:"",              /* current song, where the source publishes one */
+  dead:new Set()
+};
+
+const el = {
+  lcd:document.getElementById("lcd"),
+  scale:document.getElementById("scale"),
+  power:document.getElementById("power"),
+  vol:document.getElementById("vol"),
+  live:document.getElementById("live"),
+  credit:document.getElementById("credit"),
+};
+
+const source  = () => SOURCES[state.src];
+const list    = () => source().channels;
+const channel = () => list()[state.ch] || null;
+
+/* =======================================================================
+   4. NETWORK AND THE RADIO BROWSER ADAPTER
+   ======================================================================= */
+
+/* An HTTPS page cannot play an HTTP stream. A local file can. */
+const SECURE = location.protocol === "https:";
+const playable = u => !!u && (!SECURE || u.slice(0, 6) === "https:");
+
+/* The tuner writes nothing to the browser. It holds no state between
+   visits, so it behaves the same from a server, from a local file, and
+   from a private window. Station lists live in memory for this visit only. */
+
+async function getJSON(url, ms){
+  const ac = new AbortController();
+  const kill = setTimeout(() => ac.abort(), ms || 9000);
+  try{
+    const r = await fetch(url, {signal:ac.signal, cache:"no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    return await r.json();
+  } finally { clearTimeout(kill); }
+}
+
+const shuffle = a => a.map(v => [Math.random(), v]).sort((x, y) => x[0] - y[0]).map(p => p[1]);
+
+const RB_FALLBACK = [
+  "https://de1.api.radio-browser.info",
+  "https://nl1.api.radio-browser.info",
+  "https://at1.api.radio-browser.info",
+  "https://fi1.api.radio-browser.info"
+];
+let rbServers = null, rbGood = null;
+
+/* The database asks apps to pick a server from the list, not a fixed one. */
+async function rbBase(){
+  if (rbServers) return rbServers;
+  try{
+    const rows = await getJSON("https://all.api.radio-browser.info/json/servers", 6000);
+    const found = rows.map(s => "https://" + s.name).filter(u => u.length > 12);
+    if (found.length){ rbServers = shuffle(found); return rbServers; }
+  }catch(e){}
+  rbServers = shuffle(RB_FALLBACK.slice());
+  return rbServers;
+}
+
+async function rbSearch(params){
+  const servers = await rbBase();
+  const qs = new URLSearchParams(Object.assign({hidebroken:"true"}, params)).toString();
+  let err = null;
+  for (let i = 0; i < Math.min(servers.length, 3); i++){
+    try{
+      const rows = await getJSON(servers[i] + "/json/stations/search?" + qs, 10000);
+      rbGood = servers[i];
+      return rows;
+    }catch(e){ err = e; }
+  }
+  throw err || new Error("no server");
+}
+
+/* The database also asks apps to report each selection. */
+function rbClick(uuid){
+  const base = rbGood || (rbServers && rbServers[0]);
+  if (!uuid || !base) return;
+  fetch(base + "/json/url/" + uuid, {cache:"no-store"}).catch(() => {});
+}
+
+/* The LCD has no lower case and no accents. */
+const clean = s => (s || "").replace(/[^\x20-\x5F]/g, " ").replace(/\s+/g, " ").trim().slice(0, 44);
+
+function toChannel(st){
+  const where = [st.state, st.countrycode].filter(Boolean).join(" ");
+  const tag = (st.tags || "").split(",")[0];
+  const spec = [st.codec, st.bitrate ? st.bitrate + "K" : ""].filter(Boolean).join(" ");
+  return {
+    label: clean((st.name || "").toUpperCase()) || "UNNAMED",
+    url: st.url_resolved || st.url,
+    sub: clean([where, tag, spec].filter(Boolean).join(" - ").toUpperCase()),
+    uuid: st.stationuuid
+  };
+}
+
+/* ---- SomaFM ---- */
+
+async function somaChannels(seed){
+  try{
+    const r = await getJSON("https://somafm.com/channels.json", 10000);
+    const rows = (r && r.channels) || [];
+    const out = rows.filter(c => c.id).map(c => ({
+      label: clean((c.title || c.id).toUpperCase()) || "SOMA",
+      url:   "https://ice1.somafm.com/" + c.id + "-128-mp3",
+      sub:   clean((c.genre || c.description || "SOMA FM").toUpperCase()),
+      soma:  c.id
+    }));
+    if (out.length) return out;
+  }catch(e){}
+  return seed || [];
+}
+
+/* ---- Internet Archive ---- */
+/* A channel is one item. The file list loads only when you tune to it,
+   so a phone does not download hundreds of file lists at once. */
+
+async function archiveSearch(q, rows){
+  const url = "https://archive.org/advancedsearch.php?q=" + encodeURIComponent(q) +
+    "&fl%5B%5D=identifier&fl%5B%5D=title&sort%5B%5D=downloads+desc" +
+    "&rows=" + rows + "&page=1&output=json";
+  const r = await getJSON(url, 14000);
+  const docs = (r && r.response && r.response.docs) || [];
+  return docs.filter(d => d && d.identifier).map(d => ({
+    kind:"item",
+    id: d.identifier,
+    label: clean(String(d.title || d.identifier).toUpperCase()) || "ITEM",
+    sub: "INTERNET ARCHIVE",
+    url: "https://archive.org/details/" + d.identifier
+  }));
+}
+
+/* The cache keeps a phone from reading the same file list again. It has a
+   limit, because a long visit must not fill the memory. */
+const archiveFileCache = {};
+const archiveCacheOrder = [];
+async function archiveFiles(id){
+  if (archiveFileCache[id]) return archiveFileCache[id];
+  const m = await getJSON("https://archive.org/metadata/" + encodeURIComponent(id), 14000);
+  const files = (m && m.files) || [];
+  const urls = files
+    .filter(f => f && (/\.mp3$/i.test(f.name || "") || /mp3/i.test(f.format || "")))
+    .slice(0, 60)
+    .map(f => "https://archive.org/download/" + encodeURIComponent(id) + "/" +
+              encodeURIComponent(f.name).replace(/%2F/g, "/"));
+  archiveFileCache[id] = urls;
+  archiveCacheOrder.push(id);
+  if (archiveCacheOrder.length > 40) delete archiveFileCache[archiveCacheOrder.shift()];
+  return urls;
+}
+
+/* ---- OpenMHz ---- */
+/* A channel is one trunked system. Playback replays its recent calls
+   in order, which is how a real scanner sounds. */
+
+async function openmhzSystems(){
+  const r = await getJSON("https://api.openmhz.com/systems", 12000);
+  const rows = Array.isArray(r) ? r : ((r && (r.systems || r.results)) || []);
+  return rows.filter(s => s && s.shortName).slice(0, 140).map(s => ({
+    kind:"calls",
+    system: s.shortName,
+    label: clean(String(s.name || s.shortName).toUpperCase()) || "SYSTEM",
+    sub: "TRUNKED RADIO - RECENT CALLS",
+    url: "https://openmhz.com/system/" + s.shortName
+  }));
+}
+
+async function openmhzCalls(sys){
+  const r = await getJSON("https://api.openmhz.com/" + encodeURIComponent(sys) + "/calls", 12000);
+  const calls = (r && (r.calls || r.results)) || (Array.isArray(r) ? r : []);
+  return calls.map(c => c && c.url).filter(u => typeof u === "string" && u.length > 8)
+              .slice(0, 40).reverse();
+}
+
+/* ---- one entry point for every adapter ---- */
+
+async function fetchChannels(s){
+  if (s.kind === "rb"){
+    const seen = new Set(), out = [];
+    for (const p of s.q()){
+      let rows = [];
+      try{ rows = await rbSearch(p); }catch(e){ continue; }
+      for (const st of rows){
+        const ch = toChannel(st);
+        if (!ch.url || !playable(ch.url) || seen.has(ch.url)) continue;
+        seen.add(ch.url); out.push(ch);
+      }
+    }
+    return out.slice(0, 240);
+  }
+
+  if (s.kind === "soma")    return await somaChannels(s.seed);
+  if (s.kind === "archive") return await archiveSearch(s.q, 90);
+
+  if (s.kind === "openmhz"){
+    try{ return await openmhzSystems(); }
+    catch(e){
+      /* If OpenMHz refuses the request, fall back to scanner relays. */
+      const out = [];
+      try{
+        const rows = await rbSearch({tag:"scanner", order:"clickcount", reverse:"true", limit:60});
+        rows.forEach(st => { const c = toChannel(st); if (playable(c.url)) out.push(c); });
+      }catch(e2){}
+      return out;
+    }
+  }
+  return [];
+}
+
+async function loadSource(i){
+  const s = SOURCES[i];
+  if (s.loaded || s.loading) return;
+  /* A source that just failed must not hit the network on every knob turn. */
+  if (s.failedAt && Date.now() - s.failedAt < 60000) return;
+
+  s.loading = true; s.error = null;
+  if (i === state.src && state.power) setStatus("LOADING");
+  kick();
+
+  try{
+    const out = await fetchChannels(s);
+    if (!out.length) throw new Error("empty");
+    s.channels = out;
+    s.loaded = true;
+    s.failedAt = 0;
+  }catch(e){
+    s.error = SECURE ? "NO DATA - TRY THE LOCAL FILE" : "NO DATA - CHECK THE NETWORK";
+    s.failedAt = Date.now();
+  }finally{
+    s.loading = false;
+    afterLoad(i);
+  }
+}
+
+function afterLoad(i){
+  if (i !== state.src){ kick(); return; }
+  if (state.ch >= list().length) state.ch = 0;
+  syncKnobs();
+  if (state.power) requestTune(true);
+  kick();
+}
+
+/* =======================================================================
+   5. AUDIO ENGINE
+      The audio element plays the stream. It needs no CORS headers.
+      Web Audio makes the noise only. The two mix by volume, not by graph.
+   ======================================================================= */
+
+const audio = new Audio();
+audio.preload = "none";
+audio.volume = 0;
+
+let ctx = null, noiseGain = null, clickGain = null, tuneTimer = null, fadeTimer = null;
+
+function startAudioContext(){
+  if (ctx) return;
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+  const len = ctx.sampleRate * 2;
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+
+  const src = ctx.createBufferSource();
+  src.buffer = buf; src.loop = true;
+
+  const lp = ctx.createBiquadFilter(); lp.type = "lowpass";  lp.frequency.value = 4200;
+  const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 320;
+
+  noiseGain = ctx.createGain(); noiseGain.gain.value = 0;
+  clickGain = ctx.createGain(); clickGain.gain.value = 0;
+
+  src.connect(hp).connect(lp).connect(noiseGain).connect(ctx.destination);
+  clickGain.connect(ctx.destination);
+  src.start();
+}
+
+/* One trim for every noise level in the file. Lower it to make the
+   tuning hiss quieter against the stations. */
+const NOISE_TRIM = 0.3;
+
+function noise(level, time){
+  if (!noiseGain) return;
+  const now = ctx.currentTime;
+  noiseGain.gain.cancelScheduledValues(now);
+  noiseGain.gain.setValueAtTime(noiseGain.gain.value, now);
+  noiseGain.gain.linearRampToValueAtTime(level * NOISE_TRIM * state.volume, now + (time || 0.12));
+}
+
+function detentClick(){
+  if (!ctx) return;
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = "square"; o.frequency.value = 1750;
+  g.gain.setValueAtTime(0.0001, ctx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.055 * Math.max(state.volume, 0.25), ctx.currentTime + 0.004);
+  g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.045);
+  o.connect(g).connect(ctx.destination);
+  o.start(); o.stop(ctx.currentTime + 0.06);
+}
+
+let tuneToken = 0, queue = [], queueAt = 0, npTimer = null, callTimer = null, stallTimer = null;
+
+function stopStream(){
+  tuneToken++;
+  clearTimeout(tuneTimer); clearInterval(fadeTimer);
+  clearTimeout(npTimer); clearTimeout(callTimer); clearTimeout(stallTimer);
+  queue = []; queueAt = 0;
+  state.track = "";
+  audio.onplaying = audio.onerror = audio.onended = null;
+  audio.onwaiting = audio.onstalled = null;
+  audio.pause();
+  audio.removeAttribute("src");
+  audio.load();
+  audio.volume = 0;
+}
+
+/* A live stream never ends. An archive item and a scanner call do,
+   so those play as a queue and the next file follows automatically. */
+async function tuneNow(){
+  const ch = channel();
+  if (!ch) return;
+  const token = ++tuneToken;
+
+  if (ch.kind === "item" || ch.kind === "calls"){
+    setStatus("LOADING");
+    let urls = [];
+    try{
+      urls = ch.kind === "item" ? await archiveFiles(ch.id) : await openmhzCalls(ch.system);
+    }catch(e){ urls = []; }
+    if (token !== tuneToken) return;
+    if (!urls.length){ failChannel(); return; }
+    queue = urls; queueAt = 0;
+    setStatus("TUNING");
+    playUrl(urls[0], token);
+    return;
+  }
+
+  queue = [];
+  playUrl(ch.url, token);
+}
+
+function playUrl(url, token){
+  audio.src = url;
+  audio.volume = 0;
+  const p = audio.play();
+  if (p) p.catch(() => { if (token === tuneToken) failChannel(); });
+
+  clearTimeout(tuneTimer);
+  tuneTimer = setTimeout(() => { if (token === tuneToken) failChannel(); }, 8000);
+
+  audio.onplaying = () => {
+    if (token !== tuneToken) return;
+    clearTimeout(tuneTimer); clearTimeout(stallTimer);
+    skips = 0;
+    setStatus("ON AIR");
+    noise(queue.length ? 0.06 : 0.02, 0.5);
+    rampVolume();
+    const ch = channel();
+    if (ch) rbClick(ch.uuid);
+    startNowPlaying(token);
+    updateMediaSession();
+    };
+
+  /* A stream that stalls is not dead. Cover the gap with noise,
+     but give up if it never recovers. */
+  audio.onwaiting = audio.onstalled = () => {
+    if (token !== tuneToken || state.status !== "ON AIR") return;
+    setStatus("BUFFERING");
+    noise(0.16);
+    clearTimeout(stallTimer);
+    stallTimer = setTimeout(() => { if (token === tuneToken) failChannel(); }, 20000);
+  };
+
+  audio.onerror = () => {
+    if (token !== tuneToken) return;
+    /* One bad file in a queue is not a dead channel. Step over it. */
+    if (queue.length && queueAt + 1 < queue.length){ queueAt++; playUrl(queue[queueAt], token); }
+    else failChannel();
+  };
+
+  audio.onended = () => {
+    if (token !== tuneToken) return;
+    if (queueAt + 1 < queue.length){
+      queueAt++;
+      noise(0.22, 0.08);
+      playUrl(queue[queueAt], token);
+    } else {
+      refillQueue(token);
+    }
+  };
+}
+
+async function refillQueue(token){
+  const ch = channel();
+  if (!ch){ return; }
+
+  if (ch.kind === "calls"){
+    setStatus("WAITING");
+    noise(0.20);
+    let urls = [];
+    try{ urls = await openmhzCalls(ch.system); }catch(e){}
+    if (token !== tuneToken) return;
+    if (urls.length && urls[0] !== queue[0]){
+      queue = urls; queueAt = 0;
+      playUrl(urls[0], token);
+    } else {
+      callTimer = setTimeout(() => { if (token === tuneToken) refillQueue(token); }, 15000);
+    }
+    return;
+  }
+
+  if (queue.length){ queueAt = 0; playUrl(queue[0], token); return; }
+
+  /* A live stream that ends has dropped. Treat it as a dead channel. */
+  failChannel();
+}
+
+/* SomaFM publishes the current track. Nobody else here does. */
+function startNowPlaying(token){
+  clearTimeout(npTimer);
+  const ch = channel();
+  if (!ch || !ch.soma) return;
+
+  const tick = async () => {
+    if (token !== tuneToken) return;
+    if (!document.hidden){
+      try{
+        const r = await getJSON("https://somafm.com/songs/" + ch.soma + ".json", 8000);
+        const s = (r && r.songs && r.songs[0]) || null;
+        if (s && token === tuneToken){
+          state.track = clean(((s.artist || "") + " - " + (s.title || "")).toUpperCase());
+          kick();
+        }
+      }catch(e){}
+    }
+    /* The fetch can take seconds. Do not start a new timer for a channel
+       that the user has already left. */
+    if (token !== tuneToken) return;
+    npTimer = setTimeout(tick, 30000);
+  };
+  tick();
+}
+
+/* Debounced tuning. A fast knob turn must not open fifty streams. */
+let tuneDebounce = null, skips = 0;
+
+function requestTune(manual){
+  clearTimeout(tuneDebounce);
+  if (manual !== false) skips = 0;
+  if (!state.power) return;
+  stopStream();
+
+  const s = source();
+  const cooling = s.failedAt && Date.now() - s.failedAt < 60000;
+  if (!s.loaded && !s.loading && !cooling) loadSource(state.src);
+  if (s.loading){ setStatus("LOADING"); noise(0.14); return; }
+
+  const ch = channel();
+  if (!ch){ setStatus("EMPTY"); noise(0.10); return; }
+
+  setStatus("TUNING");
+  noise(0.30);
+  tuneDebounce = setTimeout(tuneNow, 260);
+}
+
+function rampVolume(){
+  clearInterval(fadeTimer);
+  fadeTimer = setInterval(() => {
+    const target = state.volume;
+    if (Math.abs(audio.volume - target) < 0.02){ audio.volume = target; clearInterval(fadeTimer); return; }
+    audio.volume += (target - audio.volume) * 0.25;
+  }, 40);
+}
+
+function failChannel(){
+  const ch = channel();
+  if (ch) state.dead.add(ch.url);
+  stopStream();
+
+  const n = list().length;
+  let alive = 0;
+  for (let i = 0; i < n; i++) if (!state.dead.has(list()[i].url)) alive++;
+
+  /* Roughly one station in six is dead at any time. Step over it. */
+  if (state.power && n > 1 && alive > 0 && skips < 10){
+    skips++;
+    setStatus("SKIPPING");
+    noise(0.34);
+    let guard = 0;
+    do {
+      state.ch = (state.ch + state.dir + n) % n;
+    } while (state.dead.has(list()[state.ch].url) && ++guard < n);
+    syncKnobs();
+    requestTune(false);
+    return;
+  }
+
+  setStatus("NO SIGNAL");
+  noise(0.34);
+}
+
+function setStatus(s){
+  state.status = s;
+  kick();
+}
+
+/* =======================================================================
+   6. KNOB — drag angle, wheel, and arrow keys.
+      The source dial divides a full turn by its number of positions,
+      so twelve detents bring it back to where it started. The channel
+      dial is an endless encoder and keeps a fixed 30 degree detent,
+      because a list of 150 stations would give 2.4 degrees each.
+   ======================================================================= */
+
+function buildKnob(svg){
+  const NS = "http://www.w3.org/2000/svg";
+  const add = (tag, attrs) => {
+    const n = document.createElementNS(NS, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    svg.appendChild(n); return n;
+  };
+  const defs = document.createElementNS(NS, "defs");
+  defs.innerHTML =
+    '<radialGradient id="'+svg.id+'-body" cx="38%" cy="30%">' +
+      '<stop offset="0%" stop-color="#5a544c"/><stop offset="62%" stop-color="#332f2b"/>' +
+      '<stop offset="100%" stop-color="#171514"/></radialGradient>' +
+    '<linearGradient id="'+svg.id+'-ring" x1="0" y1="0" x2="0" y2="1">' +
+      '<stop offset="0%" stop-color="#d8d1c3"/><stop offset="48%" stop-color="#8b857b"/>' +
+      '<stop offset="100%" stop-color="#3c3833"/></linearGradient>';
+  svg.appendChild(defs);
+
+  add("circle", {cx:60, cy:60, r:57, fill:"url(#"+svg.id+"-ring)"});
+  add("circle", {cx:60, cy:60, r:51, fill:"#100e0d"});
+
+  const rotor = document.createElementNS(NS, "g");
+  svg.appendChild(rotor);
+
+  /* knurled rim */
+  for (let i = 0; i < 48; i++){
+    const a = (i / 48) * Math.PI * 2;
+    const r1 = 44, r2 = 50;
+    const l = document.createElementNS(NS, "line");
+    l.setAttribute("x1", 60 + Math.cos(a) * r1); l.setAttribute("y1", 60 + Math.sin(a) * r1);
+    l.setAttribute("x2", 60 + Math.cos(a) * r2); l.setAttribute("y2", 60 + Math.sin(a) * r2);
+    l.setAttribute("stroke", i % 2 ? "#6d675f" : "#2a2724");
+    l.setAttribute("stroke-width", "2.6");
+    rotor.appendChild(l);
+  }
+  const cap = document.createElementNS(NS, "circle");
+  cap.setAttribute("cx", 60); cap.setAttribute("cy", 60); cap.setAttribute("r", 43);
+  cap.setAttribute("fill", "url(#"+svg.id+"-body)");
+  rotor.appendChild(cap);
+
+  const mark = document.createElementNS(NS, "rect");
+  mark.setAttribute("x", 57.6); mark.setAttribute("y", 20); mark.setAttribute("width", 4.8);
+  mark.setAttribute("height", 20); mark.setAttribute("rx", 2.4); mark.setAttribute("fill", "#e8dfcd");
+  rotor.appendChild(mark);
+
+  return rotor;
+}
+
+function attachKnob(svg, onStep, stepDeg){
+  const rotor = buildKnob(svg);
+  let angle = 0, dragging = false, last = 0, acc = 0;
+  const deg = () => (typeof stepDeg === "function" ? stepDeg() : stepDeg) || 30;
+
+  const paint = () => rotor.setAttribute("transform", "rotate("+angle+" 60 60)");
+
+  const pointAngle = (ev) => {
+    const r = svg.getBoundingClientRect();
+    return Math.atan2(ev.clientY - (r.top + r.height/2), ev.clientX - (r.left + r.width/2)) * 180 / Math.PI;
+  };
+
+  svg.addEventListener("pointerdown", ev => {
+    if (ev.button > 0) return;                 /* left button and touch only */
+    ev.preventDefault();
+    dragging = true; last = pointAngle(ev);
+    try{ svg.setPointerCapture(ev.pointerId); }catch(e){}
+  });
+  svg.addEventListener("pointermove", ev => {
+    if (!dragging) return;
+    const a = pointAngle(ev);
+    let d = a - last;
+    if (d > 180) d -= 360;
+    if (d < -180) d += 360;
+    last = a; acc += d; angle += d; paint();
+    let d0 = deg();
+    while (Math.abs(acc) >= d0){
+      const dir = acc > 0 ? 1 : -1;
+      acc -= dir * d0;
+      onStep(dir);
+      d0 = deg();
+    }
+  });
+  const stop = () => { dragging = false; };
+  svg.addEventListener("pointerup", stop);
+  svg.addEventListener("pointercancel", stop);
+
+  svg.addEventListener("wheel", ev => {
+    ev.preventDefault();
+    const dir = ev.deltaY > 0 ? 1 : -1;
+    angle += dir * deg(); paint(); onStep(dir);
+  }, {passive:false});
+
+  svg.addEventListener("keydown", ev => {
+    let dir = 0;
+    if (ev.key === "ArrowRight" || ev.key === "ArrowUp") dir = 1;
+    if (ev.key === "ArrowLeft"  || ev.key === "ArrowDown") dir = -1;
+    if (!dir) return;
+    ev.preventDefault();
+    angle += dir * deg(); paint(); onStep(dir);
+  });
+
+  return {
+    set(step){ if (!dragging) { angle = step * deg(); paint(); } },
+    dragging(){ return dragging; }
+  };
+}
+
+function stepSource(dir){
+  state.src = (state.src + dir + SOURCES.length) % SOURCES.length;
+  state.ch = 0;
+  state.dir = dir;
+  syncKnobs();
+  loadSource(state.src);
+  requestTune(true);
+  kick();
+}
+
+function stepChannel(dir){
+  const n = list().length;
+  if (n) state.ch = (state.ch + dir + n) % n;
+  state.dir = dir;
+  syncKnobs();
+  requestTune(true);
+  kick();
+}
+
+const knobSource = attachKnob(document.getElementById("knobSource"), dir => {
+  detentClick();
+  stepSource(dir);
+}, () => 360 / SOURCES.length);
+
+const knobChannel = attachKnob(document.getElementById("knobChannel"), dir => {
+  detentClick();
+  stepChannel(dir);
+});
+
+function syncKnobs(){
+  const ks = document.getElementById("knobSource");
+  const kc = document.getElementById("knobChannel");
+  ks.setAttribute("aria-valuemax", SOURCES.length);
+  ks.setAttribute("aria-valuenow", state.src + 1);
+  ks.setAttribute("aria-valuetext", source().name);
+  kc.setAttribute("aria-valuemax", Math.max(list().length, 1));
+  kc.setAttribute("aria-valuenow", state.ch + 1);
+  kc.setAttribute("aria-valuetext", channel() ? channel().label : "No channels");
+  const n = list().length;
+  state.needleTarget = n > 1 ? state.ch / (n - 1) : 0.5;
+
+  /* Keep the knob graphics true when the code moves the dial.
+     set() ignores the request while a finger is on the knob. */
+  knobSource.set(state.src);
+  knobChannel.set(state.ch);
+  updateCredit();
+  updateMediaSession();
+}
+
+/* Show the provider for the source on the dial. The text stays visible when
+   the power is off, because the credit applies to the site, not the audio. */
+let lastCreditKind = null;
+function updateCredit(){
+  const kind = source().kind;
+  if (kind === lastCreditKind) return;         /* the channel knob does not change it */
+  lastCreditKind = kind;
+  const p = PROVIDERS[kind];
+  if (!p){ el.credit.textContent = ""; return; }
+  el.credit.textContent = "Audio by ";
+  const a = document.createElement("a");
+  a.href = p.url;
+  a.target = "_blank";
+  a.rel = "noopener";
+  a.textContent = p.name;
+  el.credit.appendChild(a);
+}
+
+/* ---- lock screen and headset control ---- */
+
+/* Phone lock screens and headset buttons drive the tuner through this. */
+function updateMediaSession(){
+  if (!("mediaSession" in navigator)) return;
+  const ch = channel();
+  try{
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: ch ? ch.label : source().name,
+      artist: state.track || source().name,
+      album: "neoradio"
+    });
+    navigator.mediaSession.playbackState =
+      (state.power && state.status === "ON AIR") ? "playing" : "paused";
+  }catch(e){}
+}
+
+function bindMediaSession(){
+  if (!("mediaSession" in navigator)) return;
+  const set = (a, f) => { try{ navigator.mediaSession.setActionHandler(a, f); }catch(e){} };
+  set("play",  () => { if (!state.power) el.power.click(); });
+  set("pause", () => { if (state.power) el.power.click(); });
+  set("stop",  () => { if (state.power) el.power.click(); });
+  set("nexttrack",     () => stepChannel(1));
+  set("previoustrack", () => stepChannel(-1));
+}
+
+/* =======================================================================
+   7. LCD — 16 columns, 2 lines, drawn dot by dot.
+   ======================================================================= */
+
+const COLS = 16, LINES = 2;
+const lcdCtx = el.lcd.getContext("2d");
+
+/* Each line scrolls on its own. Archive titles are long. */
+const scroll = [{x:0, hold:70, text:null}, {x:0, hold:70, text:null}];
+
+function advanceScroll(i, text){
+  const st = scroll[i];
+  if (st.text !== text){ st.text = text; st.x = 0; st.hold = 70; }
+  if (text.length > COLS){
+    if (st.hold > 0) st.hold--;
+    else {
+      st.x += 0.06;
+      if (st.x > text.length - COLS + 2){ st.x = 0; st.hold = 70; }
+    }
+  } else st.x = 0;
+  return Math.floor(st.x);
+}
+
+/* Top line: the source name, and nothing else. It changes only
+   when the left knob moves. */
+function lineOne(){
+  return state.power ? source().name : "";
+}
+
+/* Bottom line: the station, or what the tuner is doing instead. */
+function lineTwo(){
+  if (!state.power) return "";
+
+  const s = source(), n = list().length;
+  if (s.loading) return "LOADING...";
+  if (s.error) return s.error;
+  if (!n) return "NO CHANNELS";
+
+  if (state.status === "LOADING")   return "READING FILE LIST...";
+  if (state.status === "TUNING")    return "TUNING...";
+  if (state.status === "BUFFERING") return "BUFFERING...";
+  if (state.status === "SKIPPING")  return "DEAD CHANNEL - SKIPPING";
+  if (state.status === "WAITING")   return "NO TRAFFIC - LISTENING";
+  if (state.status === "NO SIGNAL") return "NO SIGNAL - TURN THE KNOB";
+
+  const ch = channel();
+  return ch ? ch.label : s.name;
+}
+
+let lastLcdKey = "", lcdScrolling = false;
+
+function drawLCD(){
+  /* Move the scroll first. It must advance on every frame, even on a
+     frame that draws nothing. */
+  const rows = [lineOne(), lineTwo()];
+  const shift = [];
+  lcdScrolling = false;
+  for (let li = 0; li < LINES; li++){
+    const text = rows[li] || "";
+    shift.push(advanceScroll(li, text));
+    if (text.length > COLS) lcdScrolling = true;
+  }
+
+  /* Nothing moved, so there is nothing to paint. */
+  const key = (state.power ? 1 : 0) + "|" + rows[0] + "|" + rows[1] +
+              "|" + shift[0] + "|" + shift[1];
+  if (key === lastLcdKey) return;
+  lastLcdKey = key;
+
+  const c = lcdCtx, W = el.lcd.width, H = el.lcd.height;
+  const cell = Math.floor(W / (COLS * 6 + 2));
+  const dot = Math.max(2, Math.floor(cell * 0.78));
+  const gridW = COLS * 6 * cell;
+  const ox = Math.floor((W - gridW) / 2) + cell;
+  const gridH = (LINES * 8 + 2) * cell;
+  const oy = Math.floor((H - gridH) / 2) + cell;
+
+  c.clearRect(0, 0, W, H);
+
+  const on = state.power;
+  const offColor = on ? "#4a2a0b" : "#241505";
+
+  /* Two passes only. One fill for the dark dots, one for the lit dots.
+     A shadow applied per dot is far too slow. */
+  const offPath = new Path2D(), onPath = new Path2D();
+
+  for (let li = 0; li < LINES; li++){
+    const text = rows[li] || "";
+    const lineY = oy + li * 10 * cell;
+
+    for (let col = 0; col < COLS * 6; col++){
+      const abs = col + shift[li] * 6;
+      const ci = Math.floor(abs / 6);
+      const inChar = abs % 6;
+      let bits = 0;
+      if (inChar < 5 && ci >= 0 && ci < text.length) bits = glyph(text[ci])[inChar];
+
+      for (let row = 0; row < 7; row++){
+        const x = ox + col * cell, y = lineY + row * cell;
+        ((on && (bits >> row & 1)) ? onPath : offPath).rect(x, y, dot, dot);
+      }
+    }
+  }
+
+  c.shadowBlur = 0;
+  c.fillStyle = offColor;
+  c.fill(offPath);
+
+  c.shadowColor = "rgba(255,150,40,.85)";
+  c.shadowBlur = dot * 1.6;
+  c.fillStyle = "#ffa231";
+  c.fill(onPath);
+  c.shadowBlur = 0;
+
+}
+
+/* =======================================================================
+   8. TUNING SCALE
+   ======================================================================= */
+
+const scaleCtx = el.scale.getContext("2d");
+
+function drawScale(){
+  const c = scaleCtx, W = el.scale.width, H = el.scale.height;
+  c.clearRect(0, 0, W, H);
+
+  const padX = 40, y = H - 52;
+  c.strokeStyle = "#6f6860"; c.lineWidth = 2;
+  c.beginPath(); c.moveTo(padX, y); c.lineTo(W - padX, y); c.stroke();
+
+  for (let i = 0; i <= 40; i++){
+    const x = padX + (W - padX*2) * (i / 40);
+    const major = i % 5 === 0;
+    c.strokeStyle = major ? "#cfc8bb" : "#7c756c";
+    c.lineWidth = major ? 2.5 : 1.5;
+    c.beginPath(); c.moveTo(x, y); c.lineTo(x, y - (major ? 22 : 12)); c.stroke();
+    if (major){
+      c.fillStyle = "#b8b0a4";
+      c.font = "500 22px Arial Narrow, Arial, sans-serif";
+      c.textAlign = "center";
+      c.fillText(String(88 + i / 2), x, y - 30);
+    }
+  }
+
+  c.fillStyle = "#8c857a";
+  c.font = "500 20px Arial Narrow, Arial, sans-serif";
+  c.textAlign = "left";  c.fillText(source().name, padX, H - 14);
+  c.textAlign = "right";
+  c.fillText(list().length ? (state.ch + 1) + " OF " + list().length : "NO CHANNELS", W - padX, H - 14);
+
+  /* needle */
+  const nx = padX + (W - padX*2) * state.needle;
+  c.strokeStyle = state.power ? "#d9342b" : "#5a2b26";
+  c.lineWidth = 3;
+  c.shadowColor = "rgba(217,52,43,.7)"; c.shadowBlur = state.power ? 10 : 0;
+  c.beginPath(); c.moveTo(nx, y + 10); c.lineTo(nx, y - 44); c.stroke();
+  c.shadowBlur = 0;
+  c.fillStyle = state.power ? "#d9342b" : "#5a2b26";
+  c.beginPath(); c.moveTo(nx - 7, y + 10); c.lineTo(nx + 7, y + 10); c.lineTo(nx, y + 20); c.fill();
+}
+
+/* =======================================================================
+   9. FRAME LOOP
+   ======================================================================= */
+
+let t = 0, running = false, lastScaleKey = "", lastSpoken = "", lastSpokeAt = -99;
+
+const REDUCED = window.matchMedia &&
+                window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+/* The loop stops when nothing moves and when the tab is hidden. A phone
+   must not run a 60 Hz canvas loop for a face that does not change.
+   Every function that changes the face calls kick() to start it again. */
+function kick(){
+  if (running || document.hidden) return;
+  running = true;
+  requestAnimationFrame(frame);
+}
+
+function frame(){
+  t++;
+
+  /* The needle glides, unless the system asks for less movement. */
+  state.needle += REDUCED ? (state.needleTarget - state.needle)
+                          : (state.needleTarget - state.needle) * 0.14;
+
+  drawLCD();
+
+  const scaleKey = state.src + ":" + state.ch + ":" + list().length + ":" +
+                   (state.power ? 1 : 0) + ":" + Math.round(state.needle * 500);
+  if (scaleKey !== lastScaleKey){ drawScale(); lastScaleKey = scaleKey; }
+
+  /* Screen readers get the same information the glass shows. */
+  /* Announce a change, but not more than about four times each second. */
+  const spoken = state.power ? (lineOne() + ". " + lineTwo()) : "Tuner off";
+  if (spoken !== lastSpoken && t - lastSpokeAt >= 15){
+    el.live.textContent = spoken; lastSpoken = spoken; lastSpokeAt = t;
+  }
+
+  const settled = Math.abs(state.needleTarget - state.needle) < 0.002;
+  const busy = lcdScrolling || !settled || spoken !== lastSpoken;
+  if (document.hidden || !busy){ running = false; return; }
+  requestAnimationFrame(frame);
+}
+
+document.addEventListener("visibilitychange", () => { if (!document.hidden) kick(); });
+
+/* =======================================================================
+  10. CONTROLS
+   ======================================================================= */
+
+el.power.addEventListener("click", () => {
+  state.power = !state.power;
+  el.power.setAttribute("aria-pressed", String(state.power));
+  if (state.power){
+    startAudioContext();
+    if (ctx.state === "suspended") ctx.resume();
+    /* Give every station a new chance. A station that was down an hour
+       ago is often back, and there is no other way to retry it. */
+    state.dead.clear();
+    bindMediaSession();
+    detentClick();
+    loadSource(state.src);
+    requestTune(true);
+  } else {
+    stopStream();
+    noise(0, 0.2);
+    setStatus("OFF");
+  }
+  updateMediaSession();
+  kick();
+});
+
+el.vol.addEventListener("input", () => {
+  state.volume = Number(el.vol.value) / 100;
+  if (state.status === "ON AIR" || state.status === "BUFFERING") audio.volume = state.volume;
+  if (noiseGain) noise(state.status === "ON AIR" ? 0.02 : 0.30);
+});
+
+/* =======================================================================
+  11. START
+   ======================================================================= */
+
+syncKnobs();
+knobSource.set(state.src);
+knobChannel.set(state.ch);
+state.needle = state.needleTarget;
+setStatus("OFF");
+loadSource(state.src);
+kick();
+
+</script>
+</body>
+</html>
